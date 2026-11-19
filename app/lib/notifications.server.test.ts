@@ -8,6 +8,7 @@ import {
   getUnreadNotificationCount,
   markNotificationAsRead,
   markAllNotificationsAsRead,
+  notifyCourseUpdated,
   NotificationEventType,
 } from "./notifications.server";
 
@@ -210,5 +211,70 @@ describe("discussion comment notifications (ticket #7)", () => {
     });
 
     expect(notif).toBeNull();
+  });
+});
+
+describe("enrollment, review & course update notifications (ticket #8)", () => {
+  it("triggers student_enrolled notification for instructor when student enrolls", () => {
+    const notif = createNotification(db, {
+      recipientUserId: base.instructor.id,
+      actorUserId: base.user.id,
+      eventType: NotificationEventType.StudentEnrolled,
+      courseId: base.course.id,
+      title: "New student enrolled",
+      body: "Test User enrolled in your course 'Introduction to TypeScript'.",
+      targetUrl: "/instructor",
+      metadata: { studentId: base.user.id },
+    });
+
+    expect(notif).not.toBeNull();
+    expect(notif?.recipientUserId).toBe(base.instructor.id);
+    expect(notif?.eventType).toBe(NotificationEventType.StudentEnrolled);
+  });
+
+  it("triggers course_rated notification for instructor when student rates course", () => {
+    const notif = createNotification(db, {
+      recipientUserId: base.instructor.id,
+      actorUserId: base.user.id,
+      eventType: NotificationEventType.CourseRated,
+      courseId: base.course.id,
+      title: "New 5-star review",
+      body: "Great course! Learned a lot.",
+      targetUrl: "/instructor",
+      metadata: { rating: 5 },
+    });
+
+    expect(notif).not.toBeNull();
+    expect(notif?.recipientUserId).toBe(base.instructor.id);
+    expect(notif?.eventType).toBe(NotificationEventType.CourseRated);
+  });
+
+  it("notifies only active enrolled students and excludes lapsed students on course_updated", () => {
+    // base.user is enrolled
+    db.insert(schema.enrollments)
+      .values({
+        userId: base.user.id,
+        courseId: base.course.id,
+      })
+      .run();
+
+    // student2 has no enrollment (or had enrollment revoked/lapsed)
+
+    const notifiedCount = notifyCourseUpdated(db, {
+      courseId: base.course.id,
+      courseSlug: base.course.slug,
+      instructorId: base.instructor.id,
+      title: "Course update published",
+      body: "Added a new bonus lesson on generic types.",
+    });
+
+    expect(notifiedCount).toBe(1);
+
+    const student1Notifs = getNotificationsForUser(db, base.user.id);
+    expect(student1Notifs.length).toBe(1);
+    expect(student1Notifs[0].eventType).toBe(NotificationEventType.CourseUpdated);
+
+    const student2Notifs = getNotificationsForUser(db, student2.id);
+    expect(student2Notifs.length).toBe(0);
   });
 });

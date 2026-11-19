@@ -5,6 +5,7 @@ import { z } from "zod";
 import type { Route } from "./+types/courses.$slug";
 import { getCurrentUserId } from "~/lib/session";
 import { db } from "~/db";
+import { notifyCourseRated } from "~/lib/notifications.server";
 import {
   courses,
   categories,
@@ -346,20 +347,35 @@ function rateCourse(userId: number, courseId: number, rating: number) {
 
   const existing = findRating(userId, courseId);
 
+  let result;
   if (existing) {
-    return db
+    result = db
       .update(courseRatings)
       .set({ rating, updatedAt: new Date().toISOString() })
       .where(eq(courseRatings.id, existing.id))
       .returning()
       .get();
+  } else {
+    result = db
+      .insert(courseRatings)
+      .values({ userId, courseId, rating })
+      .returning()
+      .get();
   }
 
-  return db
-    .insert(courseRatings)
-    .values({ userId, courseId, rating })
-    .returning()
-    .get();
+  if (result) {
+    const fullCourse = db.select().from(courses).where(eq(courses.id, courseId)).get();
+    if (fullCourse) {
+      notifyCourseRated(db, {
+        courseId,
+        instructorId: fullCourse.instructorId,
+        studentId: userId,
+        rating,
+      });
+    }
+  }
+
+  return result;
 }
 
 const ratingSchema = z.object({
