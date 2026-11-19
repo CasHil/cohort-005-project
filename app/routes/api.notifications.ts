@@ -1,42 +1,74 @@
-import { redirect } from "react-router";
+import { redirect, data } from "react-router";
+import { z } from "zod";
 import type { Route } from "./+types/api.notifications";
 import { getCurrentUserId } from "~/lib/session";
 import { db } from "~/db";
 import {
   markNotificationAsRead,
+  markNotificationAsUnread,
   markAllNotificationsAsRead,
   markCourseNotificationsAsRead,
 } from "~/lib/notifications.server";
 
+const notificationActionSchema = z.discriminatedUnion("intent", [
+  z.object({
+    intent: z.literal("mark-as-read"),
+    notificationId: z.coerce.number().int().positive(),
+    redirectTo: z.string().optional(),
+  }),
+  z.object({
+    intent: z.literal("mark-as-unread"),
+    notificationId: z.coerce.number().int().positive(),
+    redirectTo: z.string().optional(),
+  }),
+  z.object({
+    intent: z.literal("mark-all-read"),
+    redirectTo: z.string().optional(),
+  }),
+  z.object({
+    intent: z.literal("mark-course-read"),
+    courseId: z
+      .string()
+      .optional()
+      .transform((val) => (val === "null" || !val ? null : Number(val))),
+    redirectTo: z.string().optional(),
+  }),
+]);
+
 export async function action({ request }: Route.ActionArgs) {
   const userId = await getCurrentUserId(request);
   if (!userId) {
-    return Response.json({ error: "Unauthorized" }, { status: 401 });
+    throw data("Unauthorized", { status: 401 });
   }
 
   const formData = await request.formData();
-  const intent = formData.get("intent");
-  const redirectTo = (formData.get("redirectTo") as string) || null;
+  const rawData = Object.fromEntries(formData.entries());
 
-  if (intent === "mark-as-read") {
-    const notificationId = Number(formData.get("notificationId"));
-    if (!notificationId) {
-      return Response.json({ error: "Missing notificationId" }, { status: 400 });
-    }
-    markNotificationAsRead(db, notificationId, userId);
-  } else if (intent === "mark-all-read") {
-    markAllNotificationsAsRead(db, userId);
-  } else if (intent === "mark-course-read") {
-    const rawCourseId = formData.get("courseId");
-    const courseId = rawCourseId === "null" || !rawCourseId ? null : Number(rawCourseId);
-    markCourseNotificationsAsRead(db, userId, courseId);
-  } else {
-    return Response.json({ error: "Invalid intent" }, { status: 400 });
+  const parsed = notificationActionSchema.safeParse(rawData);
+  if (!parsed.success) {
+    throw data("Invalid request parameters", { status: 400 });
   }
 
-  if (redirectTo) {
-    return redirect(redirectTo);
+  const payload = parsed.data;
+
+  switch (payload.intent) {
+    case "mark-as-read":
+      markNotificationAsRead(db, payload.notificationId, userId);
+      break;
+    case "mark-as-unread":
+      markNotificationAsUnread(db, payload.notificationId, userId);
+      break;
+    case "mark-all-read":
+      markAllNotificationsAsRead(db, userId);
+      break;
+    case "mark-course-read":
+      markCourseNotificationsAsRead(db, userId, payload.courseId);
+      break;
   }
 
-  return Response.json({ success: true });
+  if (payload.redirectTo) {
+    throw redirect(payload.redirectTo);
+  }
+
+  return { success: true };
 }
