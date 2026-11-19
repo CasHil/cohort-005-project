@@ -9,6 +9,7 @@ import {
   markNotificationAsRead,
   markAllNotificationsAsRead,
   notifyCourseUpdated,
+  notifyRefundDecided,
   NotificationEventType,
 } from "./notifications.server";
 
@@ -17,10 +18,21 @@ type TestDb = ReturnType<typeof createTestDb>;
 let db: TestDb;
 let base: ReturnType<typeof seedBaseData>;
 let student2: typeof schema.users.$inferSelect;
+let admin: typeof schema.users.$inferSelect;
 
 beforeEach(() => {
   db = createTestDb();
   base = seedBaseData(db);
+
+  admin = db
+    .insert(schema.users)
+    .values({
+      name: "Admin User",
+      email: "admin@example.com",
+      role: UserRole.Admin,
+    })
+    .returning()
+    .get();
 
   student2 = db
     .insert(schema.users)
@@ -276,5 +288,56 @@ describe("enrollment, review & course update notifications (ticket #8)", () => {
 
     const student2Notifs = getNotificationsForUser(db, student2.id);
     expect(student2Notifs.length).toBe(0);
+  });
+});
+
+describe("refund decision notifications (ticket #9)", () => {
+  it("triggers refund_decided notification for buyer student when refund is approved", () => {
+    const notif = notifyRefundDecided(db, {
+      buyerUserId: base.user.id,
+      adminUserId: admin.id,
+      courseId: base.course.id,
+      courseSlug: base.course.slug,
+      status: "approved",
+      decisionNote: "Full refund granted per guarantee.",
+    });
+
+    expect(notif).not.toBeNull();
+    expect(notif?.recipientUserId).toBe(base.user.id);
+    expect(notif?.actorUserId).toBe(admin.id);
+    expect(notif?.eventType).toBe(NotificationEventType.RefundDecided);
+    expect(notif?.title).toBe("Refund Request Approved");
+    expect(notif?.body).toContain("Full refund granted");
+    expect(notif?.targetUrl).toBe(`/courses/${base.course.slug}`);
+  });
+
+  it("triggers refund_decided notification for buyer student when refund is declined", () => {
+    const notif = notifyRefundDecided(db, {
+      buyerUserId: base.user.id,
+      adminUserId: admin.id,
+      courseId: base.course.id,
+      courseSlug: base.course.slug,
+      status: "declined",
+      decisionNote: "More than 14 days passed since purchase.",
+    });
+
+    expect(notif).not.toBeNull();
+    expect(notif?.recipientUserId).toBe(base.user.id);
+    expect(notif?.eventType).toBe(NotificationEventType.RefundDecided);
+    expect(notif?.title).toBe("Refund Request Declined");
+    expect(notif?.body).toContain("More than 14 days passed");
+  });
+
+  it("suppresses notification if platform admin is acting on their own purchase", () => {
+    const notif = notifyRefundDecided(db, {
+      buyerUserId: base.user.id,
+      adminUserId: base.user.id,
+      courseId: base.course.id,
+      courseSlug: base.course.slug,
+      status: "approved",
+      decisionNote: "Self approved",
+    });
+
+    expect(notif).toBeNull();
   });
 });

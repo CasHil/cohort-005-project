@@ -17,6 +17,7 @@ import {
   RefundStatus,
 } from "~/db/schema";
 import { formatPrice } from "~/lib/utils";
+import { notifyRefundDecided } from "~/lib/notifications.server";
 import {
   REFUND_COMPLETION_LIMIT,
   REFUND_WATCH_LIMIT_SECONDS,
@@ -677,6 +678,18 @@ export function approveRefundRequest(
       .where(eq(refunds.id, refundRequestId))
       .run();
 
+    const course = tx.select().from(courses).where(eq(courses.id, purchase.courseId)).get();
+    if (course) {
+      notifyRefundDecided(tx, {
+        buyerUserId: purchase.userId,
+        adminUserId: platformAdminId,
+        courseId: course.id,
+        courseSlug: course.slug,
+        status: "approved",
+        decisionNote: note,
+      });
+    }
+
     return {
       ok: true,
       email: buildDecisionEmail(tx, purchase, RefundStatus.Approved, note),
@@ -719,6 +732,18 @@ export function declineRefundRequest(
       })
       .where(eq(refunds.id, refundRequestId))
       .run();
+
+    const course = tx.select().from(courses).where(eq(courses.id, found.purchase.courseId)).get();
+    if (course) {
+      notifyRefundDecided(tx, {
+        buyerUserId: found.purchase.userId,
+        adminUserId: platformAdminId,
+        courseId: course.id,
+        courseSlug: course.slug,
+        status: "declined",
+        decisionNote: trimmedNote,
+      });
+    }
 
     return {
       ok: true,
