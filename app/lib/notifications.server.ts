@@ -287,3 +287,43 @@ export function notifyCourseUpdated(
 
   return count;
 }
+
+/**
+ * Dispatches notification to buyer student when a Refund Request is decided.
+ */
+export function notifyRefundDecided(
+  db: Database,
+  params: {
+    buyerUserId: number;
+    adminUserId?: number | null;
+    courseId: number;
+    courseSlug: string;
+    status: "approved" | "declined";
+    decisionNote?: string | null;
+  }
+) {
+  const isApproved = params.status === "approved";
+  const title = isApproved
+    ? "Refund Request Approved"
+    : "Refund Request Declined";
+
+  const body = params.decisionNote?.trim()
+    ? params.decisionNote.trim()
+    : isApproved
+    ? "Your refund request was approved by a Platform Admin."
+    : "Your refund request was declined by a Platform Admin.";
+
+  return createNotification(db, {
+    recipientUserId: params.buyerUserId,
+    actorUserId: params.adminUserId ?? null,
+    eventType: NotificationEventType.RefundDecided,
+    courseId: params.courseId,
+    title,
+    body,
+    targetUrl: `/courses/${params.courseSlug}`,
+    metadata: {
+      status: params.status,
+      decisionNote: params.decisionNote ?? null,
+    },
+  });
+}
