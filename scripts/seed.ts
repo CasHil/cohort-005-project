@@ -13,6 +13,7 @@ import {
   RefundStatus,
   QuestionType,
   TeamMemberRole,
+  NotificationEventType,
 } from "../app/db/schema";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -65,6 +66,7 @@ async function seed() {
 
   // Drop and recreate tables for a clean seed
   sqlite.exec(`
+    DROP TABLE IF EXISTS notifications;
     DROP TABLE IF EXISTS comments;
     DROP TABLE IF EXISTS course_ratings;
     DROP TABLE IF EXISTS video_watch_events;
@@ -2798,6 +2800,92 @@ This course is still in draft while the cluster examples are rewritten against t
 
   console.log("Created Marta's Refund Request on her Team Licence.");
 
+  // ─── Seed Notifications ───
+  // Populate realistic sample notifications for Instructors and Students
+  const emma = studentByEmail("emma.wilson@student.dev");
+  const james = studentByEmail("james.park@student.dev");
+
+  db.insert(schema.notifications)
+    .values([
+      // Instructor 1 (Sarah Chen)
+      {
+        recipientUserId: instructor1.id,
+        actorUserId: emma.id,
+        eventType: NotificationEventType.LessonCommentCreated,
+        courseId: course1.id,
+        title: "New question asked",
+        body: "Emma Wilson asked a question on Lesson 1: 'How do generic constraints propagate?'",
+        targetUrl: `/courses/${course1.slug}/lessons/1#comment-1`,
+        metadata: JSON.stringify({ lessonId: 1, commentId: 1 }),
+        readAt: null,
+        createdAt: hoursAgo(2),
+      },
+      {
+        recipientUserId: instructor1.id,
+        actorUserId: james.id,
+        eventType: NotificationEventType.StudentEnrolled,
+        courseId: course1.id,
+        title: "New student enrolled",
+        body: "James Park enrolled in your course 'Advanced TypeScript Patterns'.",
+        targetUrl: "/instructor",
+        metadata: JSON.stringify({ studentId: james.id }),
+        readAt: null,
+        createdAt: hoursAgo(5),
+      },
+      {
+        recipientUserId: instructor1.id,
+        actorUserId: emma.id,
+        eventType: NotificationEventType.CourseRated,
+        courseId: course1.id,
+        title: "New 5-star review",
+        body: "Emma Wilson left a 5-star review: 'Outstanding clarity on generics and conditional inference!'",
+        targetUrl: "/instructor",
+        metadata: JSON.stringify({ rating: 5 }),
+        readAt: daysAgo(1),
+        createdAt: daysAgo(1),
+      },
+      // Student 1 (Emma Wilson)
+      {
+        recipientUserId: emma.id,
+        actorUserId: instructor1.id,
+        eventType: NotificationEventType.CommentReplyCreated,
+        title: "Reply to your discussion",
+        courseId: course1.id,
+        body: "Sarah Chen replied: 'You can use satisfies to validate without widening the literal type.'",
+        targetUrl: `/courses/${course1.slug}/lessons/1#comment-2`,
+        metadata: JSON.stringify({ lessonId: 1, commentId: 2, parentId: 1 }),
+        readAt: null,
+        createdAt: hoursAgo(1),
+      },
+      {
+        recipientUserId: emma.id,
+        actorUserId: instructor1.id,
+        eventType: NotificationEventType.CourseUpdated,
+        courseId: course1.id,
+        title: "Course update published",
+        body: "Sarah Chen published new lesson materials for 'Advanced TypeScript Patterns'.",
+        targetUrl: `/courses/${course1.slug}`,
+        metadata: null,
+        readAt: null,
+        createdAt: hoursAgo(6),
+      },
+      {
+        recipientUserId: emma.id,
+        actorUserId: null,
+        eventType: NotificationEventType.RefundDecided,
+        courseId: course1.id,
+        title: "Refund Request Declined",
+        body: "Platform Admin declined the refund request: Policy limit exceeded.",
+        targetUrl: `/courses/${course1.slug}`,
+        metadata: null,
+        readAt: daysAgo(2),
+        createdAt: daysAgo(2),
+      },
+    ])
+    .run();
+
+  console.log("Created sample notifications for Sarah and Emma.");
+
   // ─── Flush watch events ───
   // Batched: the heartbeat makes these by far the largest table, and one
   // statement per row would dominate the seed's runtime.
@@ -2851,6 +2939,9 @@ This course is still in draft while the cluster examples are rewritten against t
   );
   console.log(
     `  Teams: ${countRows(schema.teams)}, coupons: ${countRows(schema.coupons)} (${countRows(schema.coupons, isNotNull(schema.coupons.redeemedByUserId))} redeemed)`
+  );
+  console.log(
+    `  Notifications: ${countRows(schema.notifications)}`
   );
 }
 

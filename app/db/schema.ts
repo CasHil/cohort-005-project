@@ -374,3 +374,47 @@ export const videoWatchEvents = sqliteTable("video_watch_events", {
     .notNull()
     .$defaultFn(() => new Date().toISOString()),
 });
+
+export const NotificationEventType = {
+  CommentReplyCreated: "comment_reply_created",
+  RefundDecided: "refund_decided",
+  CourseUpdated: "course_updated",
+  LessonCommentCreated: "lesson_comment_created",
+  StudentEnrolled: "student_enrolled",
+  CourseRated: "course_rated",
+} as const;
+
+export type NotificationEventType =
+  (typeof NotificationEventType)[keyof typeof NotificationEventType];
+
+export const notifications = sqliteTable(
+  "notifications",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    recipientUserId: integer("recipient_user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    actorUserId: integer("actor_user_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    eventType: text("event_type").notNull(),
+    courseId: integer("course_id").references(() => courses.id, {
+      onDelete: "cascade",
+    }),
+    title: text("title").notNull(),
+    body: text("body").notNull(),
+    targetUrl: text("target_url").notNull(),
+    metadata: text("metadata", { mode: "json" }),
+    readAt: text("read_at"),
+    createdAt: text("created_at")
+      .notNull()
+      .$defaultFn(() => new Date().toISOString()),
+  },
+  (table) => [
+    index("notifications_recipient_read_idx").on(
+      table.recipientUserId,
+      table.readAt
+    ),
+    index("notifications_course_idx").on(table.courseId),
+  ]
+);
