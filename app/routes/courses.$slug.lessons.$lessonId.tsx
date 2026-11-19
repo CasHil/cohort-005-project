@@ -10,6 +10,7 @@ import {
   type RenderedComment,
 } from "~/components/comment-thread";
 import { MIN_COMMENT_LENGTH, MAX_COMMENT_LENGTH } from "~/lib/comments";
+import { notifyCommentCreated } from "~/lib/notifications.server";
 import { db } from "~/db";
 import {
   categories,
@@ -427,11 +428,35 @@ function createComment(
     }
   }
 
-  return db
+  let parentAuthorId: number | null = null;
+  if (parentId !== null) {
+    const parent = getCommentById(parentId);
+    if (parent) {
+      parentAuthorId = parent.userId;
+    }
+  }
+
+  const newComment = db
     .insert(comments)
     .values({ userId, lessonId, parentId, body: trimmed })
     .returning()
     .get();
+
+  if (newComment) {
+    notifyCommentCreated(db, {
+      commentId: newComment.id,
+      userId,
+      lessonId,
+      parentId,
+      body: trimmed,
+      courseSlug: course.courseSlug,
+      courseId: course.courseId,
+      instructorId: course.instructorId,
+      parentCommentAuthorId: parentAuthorId,
+    });
+  }
+
+  return newComment;
 }
 
 function updateComment(commentId: number, userId: number, body: string) {

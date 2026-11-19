@@ -129,3 +129,63 @@ export function markAllNotificationsAsRead(
 
   return res.changes;
 }
+
+/**
+ * Dispatches notification for a newly created lesson comment or reply.
+ */
+export function notifyCommentCreated(
+  db: Database,
+  params: {
+    commentId: number;
+    userId: number;
+    lessonId: number;
+    parentId: number | null;
+    body: string;
+    courseSlug: string;
+    courseId: number;
+    instructorId: number;
+    parentCommentAuthorId?: number | null;
+  }
+) {
+  const snippet =
+    params.body.length > 120
+      ? params.body.slice(0, 117) + "..."
+      : params.body;
+
+  const targetUrl = `/courses/${params.courseSlug}/lessons/${params.lessonId}#comment-${params.commentId}`;
+
+  if (params.parentId === null) {
+    // Top-level comment -> notify instructor
+    return createNotification(db, {
+      recipientUserId: params.instructorId,
+      actorUserId: params.userId,
+      eventType: NotificationEventType.LessonCommentCreated,
+      courseId: params.courseId,
+      title: "New question asked",
+      body: snippet,
+      targetUrl,
+      metadata: {
+        lessonId: params.lessonId,
+        commentId: params.commentId,
+      },
+    });
+  } else if (params.parentCommentAuthorId) {
+    // Reply -> notify author of parent comment (with actor self-suppression)
+    return createNotification(db, {
+      recipientUserId: params.parentCommentAuthorId,
+      actorUserId: params.userId,
+      eventType: NotificationEventType.CommentReplyCreated,
+      courseId: params.courseId,
+      title: "Reply to your discussion",
+      body: snippet,
+      targetUrl,
+      metadata: {
+        lessonId: params.lessonId,
+        commentId: params.commentId,
+        parentId: params.parentId,
+      },
+    });
+  }
+
+  return null;
+}
