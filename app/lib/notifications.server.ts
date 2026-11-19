@@ -327,3 +327,65 @@ export function notifyRefundDecided(
     },
   });
 }
+
+/**
+ * Marks all notifications for a given course (or null for platform updates) as read for a user.
+ */
+export function markCourseNotificationsAsRead(
+  db: Database,
+  userId: number,
+  courseId: number | null
+): number {
+  const condition =
+    courseId === null
+      ? and(
+          eq(notifications.recipientUserId, userId),
+          isNull(notifications.courseId),
+          isNull(notifications.readAt)
+        )
+      : and(
+          eq(notifications.recipientUserId, userId),
+          eq(notifications.courseId, courseId),
+          isNull(notifications.readAt)
+        );
+
+  const res = db
+    .update(notifications)
+    .set({ readAt: new Date().toISOString() })
+    .where(condition)
+    .run();
+
+  return res.changes;
+}
+
+/**
+ * Returns notifications joined with course information for the notifications center.
+ */
+export function getNotificationsWithCourseForUser(
+  db: Database,
+  userId: number,
+  limit: number = 100
+) {
+  return db
+    .select({
+      id: notifications.id,
+      recipientUserId: notifications.recipientUserId,
+      actorUserId: notifications.actorUserId,
+      eventType: notifications.eventType,
+      courseId: notifications.courseId,
+      courseTitle: schema.courses.title,
+      courseSlug: schema.courses.slug,
+      title: notifications.title,
+      body: notifications.body,
+      targetUrl: notifications.targetUrl,
+      metadata: notifications.metadata,
+      readAt: notifications.readAt,
+      createdAt: notifications.createdAt,
+    })
+    .from(notifications)
+    .leftJoin(schema.courses, eq(notifications.courseId, schema.courses.id))
+    .where(eq(notifications.recipientUserId, userId))
+    .orderBy(desc(notifications.createdAt))
+    .limit(limit)
+    .all();
+}

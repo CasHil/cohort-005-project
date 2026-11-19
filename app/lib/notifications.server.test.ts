@@ -10,6 +10,7 @@ import {
   markAllNotificationsAsRead,
   notifyCourseUpdated,
   notifyRefundDecided,
+  markCourseNotificationsAsRead,
   NotificationEventType,
 } from "./notifications.server";
 
@@ -339,5 +340,43 @@ describe("refund decision notifications (ticket #9)", () => {
     });
 
     expect(notif).toBeNull();
+  });
+});
+
+describe("course notifications query & mark course read (ticket #10)", () => {
+  it("marks all notifications for a specific course as read", () => {
+    // Notification for course 1
+    const notif1 = createNotification(db, {
+      recipientUserId: base.user.id,
+      actorUserId: base.instructor.id,
+      eventType: NotificationEventType.CommentReplyCreated,
+      courseId: base.course.id,
+      title: "Course 1 Notif",
+      body: "Course 1 Body",
+      targetUrl: "/courses/1",
+    });
+
+    // Notification without course (platform)
+    const notif2 = createNotification(db, {
+      recipientUserId: base.user.id,
+      actorUserId: null,
+      eventType: NotificationEventType.RefundDecided,
+      courseId: null,
+      title: "Platform Notif",
+      body: "Platform Body",
+      targetUrl: "/account",
+    });
+
+    expect(getUnreadNotificationCount(db, base.user.id)).toBe(2);
+
+    const updated = markCourseNotificationsAsRead(db, base.user.id, base.course.id);
+    expect(updated).toBe(1);
+
+    expect(getUnreadNotificationCount(db, base.user.id)).toBe(1);
+
+    // Platform notif still unread
+    const notifs = getNotificationsForUser(db, base.user.id);
+    const platform = notifs.find((n) => n.id === notif2?.id);
+    expect(platform?.readAt).toBeNull();
   });
 });

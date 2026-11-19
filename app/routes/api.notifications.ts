@@ -5,6 +5,7 @@ import { db } from "~/db";
 import {
   markNotificationAsRead,
   markAllNotificationsAsRead,
+  markCourseNotificationsAsRead,
 } from "~/lib/notifications.server";
 
 export async function action({ request }: Route.ActionArgs) {
@@ -25,6 +26,10 @@ export async function action({ request }: Route.ActionArgs) {
     markNotificationAsRead(db, notificationId, userId);
   } else if (intent === "mark-all-read") {
     markAllNotificationsAsRead(db, userId);
+  } else if (intent === "mark-course-read") {
+    const rawCourseId = formData.get("courseId");
+    const courseId = rawCourseId === "null" || !rawCourseId ? null : Number(rawCourseId);
+    markCourseNotificationsAsRead(db, userId, courseId);
   } else {
     return Response.json({ error: "Invalid intent" }, { status: 400 });
   }
