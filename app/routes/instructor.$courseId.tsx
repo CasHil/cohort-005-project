@@ -11,6 +11,7 @@ import type { Route } from "./+types/instructor.$courseId";
 import { getCurrentUserId } from "~/lib/session";
 import { CourseStatus, UserRole } from "~/db/schema";
 import { db } from "~/db";
+import { notifyCourseUpdated } from "~/lib/notifications.server";
 import {
   courses,
   categories,
@@ -278,7 +279,7 @@ function createLesson(
       .where(eq(lessons.moduleId, moduleId))
       .get()!.max + 1;
 
-  return db
+  const newLesson = db
     .insert(lessons)
     .values({
       moduleId,
@@ -290,6 +291,24 @@ function createLesson(
     })
     .returning()
     .get();
+
+  if (newLesson) {
+    const mod = db.select().from(modules).where(eq(modules.id, moduleId)).get();
+    if (mod) {
+      const crs = db.select().from(courses).where(eq(courses.id, mod.courseId)).get();
+      if (crs) {
+        notifyCourseUpdated(db, {
+          courseId: crs.id,
+          courseSlug: crs.slug,
+          instructorId: crs.instructorId,
+          title: "Course update published",
+          body: "New lesson " + title + " added to " + crs.title + ".",
+        });
+      }
+    }
+  }
+
+  return newLesson;
 }
 
 function updateLessonTitle(id: number, title: string) {

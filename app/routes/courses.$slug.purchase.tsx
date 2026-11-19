@@ -5,6 +5,7 @@ import { z } from "zod";
 import type { Route } from "./+types/courses.$slug.purchase";
 import { getCurrentUserId } from "~/lib/session";
 import { db } from "~/db";
+import { notifyStudentEnrolled } from "~/lib/notifications.server";
 import {
   courses,
   categories,
@@ -169,6 +170,20 @@ function enrollUser(
     .values({ userId, courseId })
     .returning()
     .get();
+
+  if (enrollment) {
+    const course = db.select().from(courses).where(eq(courses.id, courseId)).get();
+    const user = db.select().from(users).where(eq(users.id, userId)).get();
+    if (course && user) {
+      notifyStudentEnrolled(db, {
+        courseId,
+        instructorId: course.instructorId,
+        studentId: userId,
+        studentName: user.name,
+        courseTitle: course.title,
+      });
+    }
+  }
 
   if (sendEmail) {
     // Would send welcome email here

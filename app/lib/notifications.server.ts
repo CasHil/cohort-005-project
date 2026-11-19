@@ -189,3 +189,101 @@ export function notifyCommentCreated(
 
   return null;
 }
+
+/**
+ * Dispatches notification to course instructor when a student enrolls.
+ */
+export function notifyStudentEnrolled(
+  db: Database,
+  params: {
+    courseId: number;
+    instructorId: number;
+    studentId: number;
+    studentName: string;
+    courseTitle: string;
+  }
+) {
+  return createNotification(db, {
+    recipientUserId: params.instructorId,
+    actorUserId: params.studentId,
+    eventType: NotificationEventType.StudentEnrolled,
+    courseId: params.courseId,
+    title: "New student enrolled",
+    body: `${params.studentName} enrolled in your course '${params.courseTitle}'.`,
+    targetUrl: "/instructor",
+    metadata: {
+      studentId: params.studentId,
+    },
+  });
+}
+
+/**
+ * Dispatches notification to course instructor when a student submits or updates a rating.
+ */
+export function notifyCourseRated(
+  db: Database,
+  params: {
+    courseId: number;
+    instructorId: number;
+    studentId: number;
+    rating: number;
+    review?: string | null;
+  }
+) {
+  const bodyText = params.review
+    ? params.review.length > 120
+      ? params.review.slice(0, 117) + "..."
+      : params.review
+    : `Student submitted a ${params.rating}-star review.`;
+
+  return createNotification(db, {
+    recipientUserId: params.instructorId,
+    actorUserId: params.studentId,
+    eventType: NotificationEventType.CourseRated,
+    courseId: params.courseId,
+    title: `New ${params.rating}-star review`,
+    body: bodyText,
+    targetUrl: "/instructor",
+    metadata: {
+      rating: params.rating,
+      review: params.review ?? null,
+    },
+  });
+}
+
+/**
+ * Dispatches notification to all currently active enrolled students when a course is updated.
+ * Excludes lapsed students (who no longer have an active enrollment row).
+ */
+export function notifyCourseUpdated(
+  db: Database,
+  params: {
+    courseId: number;
+    courseSlug: string;
+    instructorId: number;
+    title: string;
+    body: string;
+  }
+): number {
+  const activeEnrollments = db
+    .select({ userId: schema.enrollments.userId })
+    .from(schema.enrollments)
+    .where(eq(schema.enrollments.courseId, params.courseId))
+    .all();
+
+  let count = 0;
+  for (const enrollment of activeEnrollments) {
+    const notif = createNotification(db, {
+      recipientUserId: enrollment.userId,
+      actorUserId: params.instructorId,
+      eventType: NotificationEventType.CourseUpdated,
+      courseId: params.courseId,
+      title: params.title,
+      body: params.body,
+      targetUrl: `/courses/${params.courseSlug}`,
+    });
+    if (notif) count++;
+  }
+
+  return count;
+}

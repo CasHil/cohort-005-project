@@ -12,6 +12,8 @@ import { Button } from "~/components/ui/button";
 import { Ticket, AlertCircle, CheckCircle2, Globe } from "lucide-react";
 import { data } from "react-router";
 import { db } from "~/db";
+import { notifyStudentEnrolled } from "~/lib/notifications.server";
+import { users } from "~/db/schema";
 import { purchases, coupons, courses, enrollments } from "~/db/schema";
 import { eq, and } from "drizzle-orm";
 
@@ -108,6 +110,20 @@ function redeemCoupon(
     .values({ userId, courseId: coupon.courseId })
     .returning()
     .get();
+
+  if (enrollment) {
+    const course = db.select().from(courses).where(eq(courses.id, coupon.courseId)).get();
+    const user = db.select().from(users).where(eq(users.id, userId)).get();
+    if (course && user) {
+      notifyStudentEnrolled(db, {
+        courseId: coupon.courseId,
+        instructorId: course.instructorId,
+        studentId: userId,
+        studentName: user.name,
+        courseTitle: course.title,
+      });
+    }
+  }
 
   return { ok: true, enrollment };
 }
