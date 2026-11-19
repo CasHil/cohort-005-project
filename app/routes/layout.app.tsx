@@ -3,6 +3,8 @@ import type { Route } from "./+types/layout.app";
 import { Sidebar } from "~/components/sidebar";
 import { DevUI } from "~/components/dev-ui";
 import { Toaster } from "sonner";
+import { NotificationBell } from "~/components/notification-bell";
+import { getUnreadNotificationCount, getNotificationsForUser } from "~/lib/notifications.server";
 import { getCurrentUserId, getDevCountry } from "~/lib/session";
 import { getCountryTierInfo, COUNTRIES } from "~/lib/ppp";
 import { eq, and, or, sql, desc } from "drizzle-orm";
@@ -178,6 +180,22 @@ export async function loader({ request }: Route.LoaderArgs) {
   const devCountry = await getDevCountry(request);
   const countryTierInfo = getCountryTierInfo(devCountry);
 
+  const unreadNotificationCount = currentUserId
+    ? getUnreadNotificationCount(db, currentUserId)
+    : 0;
+
+  const recentNotifications = currentUserId
+    ? getNotificationsForUser(db, currentUserId, 10).map((n) => ({
+        id: n.id,
+        eventType: n.eventType,
+        title: n.title,
+        body: n.body,
+        targetUrl: n.targetUrl,
+        readAt: n.readAt,
+        createdAt: n.createdAt,
+      }))
+    : [];
+
   const recentCourses = currentUserId
     ? getRecentlyProgressedCourses(currentUserId).map((course) => {
         const completedLessons = getCompletedLessonCount(
@@ -213,6 +231,8 @@ export async function loader({ request }: Route.LoaderArgs) {
     countryTierInfo,
     countries: COUNTRIES,
     isTeamAdmin: currentUserId ? isTeamAdmin(currentUserId) : false,
+    unreadNotificationCount,
+    recentNotifications,
   };
 }
 
@@ -225,6 +245,8 @@ export default function AppLayout({ loaderData }: Route.ComponentProps) {
     countryTierInfo,
     countries,
     isTeamAdmin: userIsTeamAdmin,
+    unreadNotificationCount,
+    recentNotifications,
   } = loaderData;
 
   return (
@@ -234,9 +256,28 @@ export default function AppLayout({ loaderData }: Route.ComponentProps) {
         recentCourses={recentCourses}
         isTeamAdmin={userIsTeamAdmin}
       />
-      <main className="flex-1 overflow-y-auto">
-        <Outlet />
-      </main>
+      <div className="flex flex-1 flex-col overflow-hidden">
+        <header className="flex h-14 shrink-0 items-center justify-between border-b border-border bg-card/50 px-6 backdrop-blur-xs">
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+              {currentUser ? `${currentUser.role} Workspace` : "Workspace"}
+            </span>
+          </div>
+
+          <div className="flex items-center gap-4">
+            {currentUser && (
+              <NotificationBell
+                unreadCount={unreadNotificationCount}
+                recentNotifications={recentNotifications}
+              />
+            )}
+          </div>
+        </header>
+
+        <main className="flex-1 overflow-y-auto">
+          <Outlet />
+        </main>
+      </div>
       <DevUI
         users={users}
         currentUser={currentUser}
