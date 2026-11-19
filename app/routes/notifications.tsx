@@ -5,54 +5,19 @@ import { getCurrentUserId } from "~/lib/session";
 import { db } from "~/db";
 import { getNotificationsWithCourseForUser } from "~/lib/notifications.server";
 import {
-  Bell,
   Check,
   CheckCheck,
   BookOpen,
-  HelpCircle,
-  MessageSquare,
-  Sparkles,
-  Star,
-  UserPlus,
-  RefreshCw,
+  RotateCcw,
   Layers,
 } from "lucide-react";
 import { Button } from "~/components/ui/button";
 import { Card, CardHeader, CardTitle, CardContent } from "~/components/ui/card";
 import { cn } from "~/lib/utils";
-
-function getNotificationIcon(eventType: string) {
-  switch (eventType) {
-    case "lesson_comment_created":
-      return <HelpCircle className="size-4 text-amber-500" />;
-    case "comment_reply_created":
-      return <MessageSquare className="size-4 text-blue-500" />;
-    case "student_enrolled":
-      return <UserPlus className="size-4 text-emerald-500" />;
-    case "course_rated":
-      return <Star className="size-4 text-yellow-500 fill-yellow-500" />;
-    case "course_updated":
-      return <Sparkles className="size-4 text-purple-500" />;
-    case "refund_decided":
-      return <RefreshCw className="size-4 text-rose-500" />;
-    default:
-      return <Bell className="size-4 text-muted-foreground" />;
-  }
-}
-
-function formatRelativeTime(dateString: string) {
-  const then = new Date(dateString).getTime();
-  const now = Date.now();
-  const diffSec = Math.floor((now - then) / 1000);
-
-  if (diffSec < 60) return "just now";
-  const diffMin = Math.floor(diffSec / 60);
-  if (diffMin < 60) return `${diffMin}m ago`;
-  const diffHours = Math.floor(diffMin / 60);
-  if (diffHours < 24) return `${diffHours}h ago`;
-  const diffDays = Math.floor(diffHours / 24);
-  return `${diffDays}d ago`;
-}
+import {
+  getNotificationIcon,
+  formatRelativeTime,
+} from "~/components/notification-ui";
 
 export async function loader({ request }: Route.LoaderArgs) {
   const userId = await getCurrentUserId(request);
@@ -109,14 +74,16 @@ export default function NotificationsPage({
   for (const item of filteredItems) {
     const key = item.courseId ? String(item.courseId) : "platform";
     const title = item.courseTitle ?? "Platform Updates";
-    if (!groupsMap.has(key)) {
+    const existing = groupsMap.get(key);
+    if (!existing) {
       groupsMap.set(key, {
         courseId: item.courseId ?? null,
         courseTitle: title,
-        items: [],
+        items: [item],
       });
+    } else {
+      existing.items.push(item);
     }
-    groupsMap.get(key)!.items.push(item);
   }
 
   const groups = Array.from(groupsMap.values());
@@ -138,9 +105,12 @@ export default function NotificationsPage({
     );
   }
 
-  function handleMarkOneAsRead(id: number) {
+  function handleToggleRead(id: number, currentRead: boolean) {
     fetcher.submit(
-      { intent: "mark-as-read", notificationId: String(id) },
+      {
+        intent: currentRead ? "mark-as-unread" : "mark-as-read",
+        notificationId: String(id),
+      },
       { method: "post", action: "/api/notifications" }
     );
   }
@@ -222,6 +192,7 @@ export default function NotificationsPage({
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           {groups.map((group) => {
             const unreadInGroup = group.items.filter((i) => !i.readAt).length;
+            const totalInGroup = group.items.length;
             const isPlatformCard = group.courseId === null;
 
             return (
@@ -242,6 +213,9 @@ export default function NotificationsPage({
                     <CardTitle className="text-sm font-semibold truncate text-foreground">
                       {group.courseTitle}
                     </CardTitle>
+                    <span className="text-xs text-muted-foreground font-normal">
+                      ({totalInGroup})
+                    </span>
                   </div>
                   <div className="flex items-center gap-2 shrink-0">
                     {unreadInGroup > 0 ? (
@@ -298,23 +272,32 @@ export default function NotificationsPage({
                               to={item.targetUrl}
                               onClick={() => {
                                 if (isUnread) {
-                                  handleMarkOneAsRead(item.id);
+                                  handleToggleRead(item.id, false);
                                 }
                               }}
                               className="font-medium text-primary hover:underline text-[11px]"
                             >
                               View details →
                             </Link>
-                            {isUnread && (
-                              <button
-                                type="button"
-                                onClick={() => handleMarkOneAsRead(item.id)}
-                                className="text-[11px] text-muted-foreground hover:text-foreground transition-colors flex items-center gap-1"
-                              >
-                                <Check className="size-3" />
-                                <span>Mark read</span>
-                              </button>
-                            )}
+
+                            <button
+                              type="button"
+                              onClick={() => handleToggleRead(item.id, !isUnread)}
+                              className="text-[11px] text-muted-foreground hover:text-foreground transition-colors flex items-center gap-1"
+                              title={isUnread ? "Mark as read" : "Mark as unread"}
+                            >
+                              {isUnread ? (
+                                <>
+                                  <Check className="size-3" />
+                                  <span>Mark read</span>
+                                </>
+                              ) : (
+                                <>
+                                  <RotateCcw className="size-3" />
+                                  <span>Mark unread</span>
+                                </>
+                              )}
+                            </button>
                           </div>
                         </div>
                       </div>

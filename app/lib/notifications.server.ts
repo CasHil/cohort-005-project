@@ -1,4 +1,4 @@
-import { and, desc, eq, isNull, sql } from "drizzle-orm";
+import { and, desc, eq, isNull, isNotNull, sql } from "drizzle-orm";
 import type { BetterSQLite3Database } from "drizzle-orm/better-sqlite3";
 import * as schema from "~/db/schema";
 import { NotificationEventType, notifications } from "~/db/schema";
@@ -388,4 +388,28 @@ export function getNotificationsWithCourseForUser(
     .orderBy(desc(notifications.createdAt))
     .limit(limit)
     .all();
+}
+
+/**
+ * Marks a single notification as unread if it belongs to the given user.
+ * Returns true if updated, false otherwise.
+ */
+export function markNotificationAsUnread(
+  db: Database,
+  notificationId: number,
+  userId: number
+): boolean {
+  const res = db
+    .update(notifications)
+    .set({ readAt: null })
+    .where(
+      and(
+        eq(notifications.id, notificationId),
+        eq(notifications.recipientUserId, userId),
+        isNotNull(notifications.readAt)
+      )
+    )
+    .run();
+
+  return res.changes > 0;
 }

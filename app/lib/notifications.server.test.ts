@@ -11,6 +11,7 @@ import {
   notifyCourseUpdated,
   notifyRefundDecided,
   markCourseNotificationsAsRead,
+  markNotificationAsUnread,
   NotificationEventType,
 } from "./notifications.server";
 
@@ -378,5 +379,29 @@ describe("course notifications query & mark course read (ticket #10)", () => {
     const notifs = getNotificationsForUser(db, base.user.id);
     const platform = notifs.find((n) => n.id === notif2?.id);
     expect(platform?.readAt).toBeNull();
+  });
+});
+
+describe("mark as unread toggle", () => {
+  it("toggles read status back to unread", () => {
+    const notif = createNotification(db, {
+      recipientUserId: base.user.id,
+      actorUserId: base.instructor.id,
+      eventType: NotificationEventType.CommentReplyCreated,
+      courseId: base.course.id,
+      title: "Notif 1",
+      body: "Body 1",
+      targetUrl: "/test-1",
+    })!;
+
+    markNotificationAsRead(db, notif.id, base.user.id);
+    expect(getUnreadNotificationCount(db, base.user.id)).toBe(0);
+
+    const toggled = markNotificationAsUnread(db, notif.id, base.user.id);
+    expect(toggled).toBe(true);
+    expect(getUnreadNotificationCount(db, base.user.id)).toBe(1);
+
+    const notifs = getNotificationsForUser(db, base.user.id);
+    expect(notifs[0].readAt).toBeNull();
   });
 });
