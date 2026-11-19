@@ -158,3 +158,57 @@ describe("notifications domain service", () => {
     expect(getUnreadNotificationCount(db, base.user.id)).toBe(0);
   });
 });
+
+describe("discussion comment notifications (ticket #7)", () => {
+  it("triggers lesson_comment_created for the instructor when student posts a top-level comment", () => {
+    // When student posts top-level comment
+    const notif = createNotification(db, {
+      recipientUserId: base.instructor.id,
+      actorUserId: base.user.id,
+      eventType: NotificationEventType.LessonCommentCreated,
+      courseId: base.course.id,
+      title: "New question asked",
+      body: "How do generic constraints work?",
+      targetUrl: `/courses/${base.course.slug}/lessons/1#comment-10`,
+      metadata: { lessonId: 1, commentId: 10 },
+    });
+
+    expect(notif).not.toBeNull();
+    expect(notif?.recipientUserId).toBe(base.instructor.id);
+    expect(notif?.eventType).toBe(NotificationEventType.LessonCommentCreated);
+    expect(notif?.title).toBe("New question asked");
+    expect(notif?.targetUrl).toBe(`/courses/${base.course.slug}/lessons/1#comment-10`);
+  });
+
+  it("triggers comment_reply_created for parent author when someone replies", () => {
+    const notif = createNotification(db, {
+      recipientUserId: base.user.id,
+      actorUserId: student2.id,
+      eventType: NotificationEventType.CommentReplyCreated,
+      courseId: base.course.id,
+      title: "Reply to your discussion",
+      body: "You can use satisfies to solve this!",
+      targetUrl: `/courses/${base.course.slug}/lessons/1#comment-11`,
+      metadata: { lessonId: 1, commentId: 11, parentId: 10 },
+    });
+
+    expect(notif).not.toBeNull();
+    expect(notif?.recipientUserId).toBe(base.user.id);
+    expect(notif?.eventType).toBe(NotificationEventType.CommentReplyCreated);
+  });
+
+  it("suppresses self-reply notification when parent author replies to own comment", () => {
+    const notif = createNotification(db, {
+      recipientUserId: base.user.id,
+      actorUserId: base.user.id,
+      eventType: NotificationEventType.CommentReplyCreated,
+      courseId: base.course.id,
+      title: "Reply to your discussion",
+      body: "Actually never mind, I found it.",
+      targetUrl: `/courses/${base.course.slug}/lessons/1#comment-12`,
+      metadata: { lessonId: 1, commentId: 12, parentId: 10 },
+    });
+
+    expect(notif).toBeNull();
+  });
+});
